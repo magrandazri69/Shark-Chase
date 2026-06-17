@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Shark Chase 🦈</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #021b2e;
+    font-family: "Courier New", monospace;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  #game {
+    display: block;
+    width: 100vw; height: 100vh;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: none;
+  }
+  #hud {
+    position: fixed; top: 12px; left: 0; right: 0;
+    display: flex; justify-content: space-between;
+    padding: 0 16px;
+    color: #cdeafd; font-size: 18px; font-weight: bold;
+    text-shadow: 2px 2px 0 #021b2e;
+    pointer-events: none;
+  }
+  #overlay {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; color: #cdeafd;
+    background: rgba(2, 27, 46, 0.78);
+    text-shadow: 2px 2px 0 #021b2e;
+    padding: 24px;
+  }
+  #overlay h1 { font-size: 40px; margin-bottom: 8px; letter-spacing: 2px; }
+  #overlay p { font-size: 16px; margin: 6px 0; max-width: 320px; line-height: 1.5; }
+  #overlay button {
+    margin-top: 22px; padding: 14px 34px;
+    font-family: inherit; font-size: 20px; font-weight: bold;
+    color: #021b2e; background: #5fd0ff;
+    border: 4px solid #cdeafd; border-radius: 4px;
+    cursor: pointer; box-shadow: 4px 4px 0 #013049;
+  }
+  #overlay button:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #013049; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud">
+    <span id="score">🐟 0</span>
+    <span id="best">🏆 0</span>
+  </div>
+  <div id="overlay">
+    <h1>SHARK CHASE 🦈</h1>
+    <p id="msg">Gerakkan jari (atau tetikus) — jerung akan ikut!
+       Makan ikan kecil untuk markah. Elak ubur-ubur beracun 🪼</p>
+    <button id="startBtn">MAIN</button>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const scoreEl = document.getElementById("score");
+  const bestEl  = document.getElementById("best");
+  const overlay = document.getElementById("overlay");
+  const msgEl   = document.getElementById("msg");
+  const startBtn = document.getElementById("startBtn");
+
+  // Logical resolution (kept small for chunky pixels), scaled to screen.
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width  = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ----- Input: shark follows finger / mouse -----
+  const target = { x: W / 2, y: H / 2 };
+  let pointerActive = false;
+  function setTarget(e) {
+    const t = e.touches ? e.touches[0] : e;
+    if (!t) return;
+    target.x = t.clientX;
+    target.y = t.clientY;
+    pointerActive = true;
+  }
+  canvas.addEventListener("mousemove", setTarget);
+  canvas.addEventListener("touchstart", (e) => { setTarget(e); e.preventDefault(); }, { passive: false });
+  canvas.addEventListener("touchmove",  (e) => { setTarget(e); e.preventDefault(); }, { passive: false });
+
+  // ----- Game state -----
+  let best = 0;
+  try { best = parseInt(localStorage.getItem("sharkBest") || "0", 10) || 0; } catch (_) {}
+  bestEl.textContent = "🏆 " + best;
+
+  let running = false, score = 0, t = 0;
+  const shark = { x: W / 2, y: H / 2, dir: 1, angle: 0 };
+  let fishes = [], jellies = [], bubbles = [], particles = [];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function spawnFish() {
+    const fromLeft = Math.random() < 0.5;
+    fishes.push({
+      x: fromLeft ? -20 : W + 20,
+      y: rand(40, H - 40),
+      vx: (fromLeft ? 1 : -1) * rand(0.6, 1.6),
+      vy: rand(-0.3, 0.3),
+      hue: Math.floor(rand(0, 360)),
+      size: rand(0.8, 1.3),
+      wob: rand(0, 6.28),
+    });
+  }
+  function spawnJelly() {
+    jellies.push({
+      x: rand(30, W - 30),
+      y: H + 30,
+      vy: -rand(0.4, 1.1),
+      drift: rand(0, 6.28),
+      pulse: rand(0, 6.28),
+    });
+  }
+
+  function reset() {
+    score = 0; t = 0;
+    shark.x = W / 2; shark.y = H / 2; shark.dir = 1; shark.angle = 0;
+    fishes = []; jellies = []; particles = [];
+    bubbles = Array.from({ length: 28 }, () => ({
+      x: rand(0, W), y: rand(0, H), r: rand(1, 3), v: rand(0.3, 1.1),
+    }));
+    for (let i = 0; i < 4; i++) spawnFish();
+    scoreEl.textContent = "🐟 0";
+  }
+
+  function start() {
+    reset();
+    running = true;
+    overlay.classList.add("hidden");
+    if (!pointerActive) { target.x = W / 2; target.y = H / 2; }
+  }
+
+  function gameOver() {
+    running = false;
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem("sharkBest", String(best)); } catch (_) {}
+      bestEl.textContent = "🏆 " + best;
+    }
+    msgEl.innerHTML = "Aduh! Jerung kena ubur-ubur beracun 🪼<br><br>" +
+      "Markah: <b>" + score + " ikan</b><br>Terbaik: <b>" + best + "</b>";
+    overlay.querySelector("h1").textContent = "GAME OVER";
+    startBtn.textContent = "MAIN LAGI";
+    overlay.classList.remove("hidden");
+  }
+
+  startBtn.addEventListener("click", start);
+
+  // ----- Pixel drawing helpers -----
+  function px(x, y, s, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), s, s);
+  }
+
+  function drawShark(x, y, dir, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.scale(dir, 1);
+    const s = 4; // pixel block size
+    // body palette
+    const body = "#6f8aa3", belly = "#dfe9f1", dark = "#4f6678";
+    // Simple chunky pixel shark facing right. Grid units * s.
+    // body
+    for (let i = -7; i <= 5; i++) {
+      const h = Math.max(1, 4 - Math.floor(Math.abs(i + 1) / 2.2));
+      for (let j = -h; j <= h; j++) px(i * s, j * s, s, body);
+    }
+    // belly
+    for (let i = -6; i <= 4; i++) px(i * s, 2 * s, s, belly);
+    for (let i = -5; i <= 3; i++) px(i * s, 3 * s, s, belly);
+    // tail
+    px(6 * s, -3 * s, s, body); px(6 * s, -2 * s, s, body);
+    px(6 * s, 2 * s, s, body);  px(6 * s, 3 * s, s, body);
+    px(5 * s, -1 * s, s, body); px(5 * s, 1 * s, s, body);
+    // dorsal fin
+    px(-1 * s, -5 * s, s, dark); px(0 * s, -5 * s, s, dark);
+    px(-1 * s, -4 * s, s, body); px(0 * s, -4 * s, s, body); px(1 * s, -4 * s, s, body);
+    // side fin
+    px(-2 * s, 4 * s, s, dark); px(-1 * s, 4 * s, s, dark);
+    // eye
+    px(-5 * s, -1 * s, s, "#0b1822");
+    // mouth
+    for (let i = -7; i <= -5; i++) px(i * s, 1 * s, s, "#2b3a46");
+    ctx.restore();
+  }
+
+  function drawFish(f) {
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    const s = Math.max(2, Math.round(3 * f.size));
+    const c = `hsl(${f.hue},70%,62%)`;
+    const c2 = `hsl(${f.hue},70%,45%)`;
+    const flip = f.vx < 0 ? -1 : 1;
+    ctx.scale(flip, 1);
+    // body
+    px(-1 * s, -1 * s, s, c); px(0, -1 * s, s, c);
+    px(-2 * s, 0, s, c); px(-1 * s, 0, s, c); px(0, 0, s, c); px(1 * s, 0, s, c2);
+    px(-1 * s, 1 * s, s, c); px(0, 1 * s, s, c);
+    // tail
+    px(2 * s, -1 * s, s, c2); px(2 * s, 1 * s, s, c2); px(2 * s, 0, s, c2);
+    // eye
+    px(-2 * s, 0, Math.max(1, s - 1), "#0b1822");
+    ctx.restore();
+  }
+
+  function drawJelly(j) {
+    ctx.save();
+    ctx.translate(j.x, j.y);
+    const s = 4;
+    const glow = 0.5 + 0.5 * Math.sin(j.pulse);
+    const body = `rgba(255,120,200,${0.55 + 0.35 * glow})`;
+    const dome = `rgba(255,180,230,${0.7 + 0.3 * glow})`;
+    // dome
+    for (let i = -2; i <= 2; i++) px(i * s, -2 * s, s, dome);
+    for (let i = -3; i <= 3; i++) px(i * s, -1 * s, s, body);
+    for (let i = -3; i <= 3; i++) px(i * s, 0, s, body);
+    // tentacles
+    for (let i = -2; i <= 2; i += 2) {
+      const sway = Math.sin(j.pulse + i) * s;
+      px(i * s + sway, 1 * s, s, body);
+      px(i * s + sway, 2 * s, s, `rgba(255,120,200,${0.4})`);
+      px(i * s + sway * 1.5, 3 * s, s, `rgba(255,120,200,${0.3})`);
+    }
+    ctx.restore();
+  }
+
+  function burst(x, y, hue) {
+    for (let i = 0; i < 10; i++) {
+      particles.push({
+        x, y,
+        vx: rand(-2, 2), vy: rand(-2, 2),
+        life: 1, hue,
+      });
+    }
+  }
+
+  // ----- Main loop -----
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(2, (now - last) / 16.67);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    t += dt;
+
+    // background bubbles always move
+    for (const b of bubbles) {
+      b.y -= b.v * dt;
+      if (b.y < -4) { b.y = H + 4; b.x = rand(0, W); }
+    }
+
+    if (!running) return;
+
+    // Shark eases toward target (the finger).
+    const dx = target.x - shark.x;
+    const dy = target.y - shark.y;
+    shark.x += dx * 0.12 * dt;
+    shark.y += dy * 0.12 * dt;
+    const speed = Math.hypot(dx, dy);
+    if (speed > 1) {
+      const desired = Math.atan2(dy, Math.abs(dx)) * (dx < 0 ? -1 : 1);
+      shark.dir = dx < 0 ? -1 : 1;
+      shark.angle += (Math.atan2(dy, Math.abs(dx) + 0.001) * 0.6 - shark.angle) * 0.1 * dt;
+    }
+
+    // spawn
+    if (Math.random() < 0.02 * dt + score * 0.0002) spawnFish();
+    if (Math.random() < (0.004 + score * 0.0004) * dt) spawnJelly();
+
+    // fish movement + eating
+    const eatR = 34;
+    for (let i = fishes.length - 1; i >= 0; i--) {
+      const f = fishes[i];
+      f.wob += 0.1 * dt;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt + Math.sin(f.wob) * 0.4;
+      if (f.x < -40 || f.x > W + 40) { fishes.splice(i, 1); continue; }
+      if (Math.hypot(f.x - shark.x, f.y - shark.y) < eatR) {
+        burst(f.x, f.y, f.hue);
+        fishes.splice(i, 1);
+        score++;
+        scoreEl.textContent = "🐟 " + score;
+      }
+    }
+
+    // jellies movement + collision
+    const hitR = 28;
+    for (let i = jellies.length - 1; i >= 0; i--) {
+      const j = jellies[i];
+      j.pulse += 0.08 * dt;
+      j.drift += 0.03 * dt;
+      j.y += j.vy * dt;
+      j.x += Math.sin(j.drift) * 0.6 * dt;
+      if (j.y < -50) { jellies.splice(i, 1); continue; }
+      if (Math.hypot(j.x - shark.x, j.y - shark.y) < hitR) {
+        burst(shark.x, shark.y, 320);
+        gameOver();
+        return;
+      }
+    }
+
+    // particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vy += 0.05 * dt;
+      p.life -= 0.03 * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function render() {
+    // ocean gradient
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0a4d72");
+    g.addColorStop(0.6, "#063b5c");
+    g.addColorStop(1, "#021b2e");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // light rays
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = "#bfe6ff";
+    for (let i = 0; i < 5; i++) {
+      const x = ((i * 173 + t * 0.3) % (W + 200)) - 100;
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x + 60, 0);
+      ctx.lineTo(x + 160, H); ctx.lineTo(x + 100, H);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // bubbles
+    ctx.fillStyle = "rgba(180,225,255,0.35)";
+    for (const b of bubbles) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, 6.28);
+      ctx.fill();
+    }
+
+    for (const f of fishes) drawFish(f);
+    for (const j of jellies) drawJelly(j);
+
+    // particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = `hsl(${p.hue},80%,65%)`;
+      ctx.fillRect(p.x, p.y, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    if (running) drawShark(shark.x, shark.y, shark.dir, shark.angle);
+  }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
