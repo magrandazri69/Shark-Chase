@@ -8,43 +8,41 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%; overflow: hidden;
-    background: #021b2e;
-    font-family: "Courier New", monospace;
+    background: #04263b;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
     -webkit-user-select: none; user-select: none;
     touch-action: none;
   }
-  #game {
-    display: block;
-    width: 100vw; height: 100vh;
-    cursor: none;
-  }
+  #game { display: block; width: 100vw; height: 100vh; cursor: none; }
   #hud {
     position: fixed; top: 12px; left: 0; right: 0;
     display: flex; justify-content: space-between;
-    padding: 0 16px;
-    color: #cdeafd; font-size: 18px; font-weight: bold;
-    text-shadow: 2px 2px 0 #021b2e;
+    padding: 0 18px;
+    color: #eaf6ff; font-size: 20px; font-weight: bold;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.7);
     pointer-events: none;
   }
   #overlay {
     position: fixed; inset: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    text-align: center; color: #cdeafd;
-    background: rgba(2, 27, 46, 0.78);
-    text-shadow: 2px 2px 0 #021b2e;
+    text-align: center; color: #eaf6ff;
+    background: rgba(4, 30, 48, 0.72);
+    backdrop-filter: blur(3px);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
     padding: 24px;
   }
-  #overlay h1 { font-size: 40px; margin-bottom: 8px; letter-spacing: 2px; }
-  #overlay p { font-size: 16px; margin: 6px 0; max-width: 320px; line-height: 1.5; }
+  #overlay h1 { font-size: 44px; margin-bottom: 10px; letter-spacing: 1px; }
+  #overlay p { font-size: 17px; margin: 6px 0; max-width: 340px; line-height: 1.55; }
   #overlay button {
-    margin-top: 22px; padding: 14px 34px;
-    font-family: inherit; font-size: 20px; font-weight: bold;
-    color: #021b2e; background: #5fd0ff;
-    border: 4px solid #cdeafd; border-radius: 4px;
-    cursor: pointer; box-shadow: 4px 4px 0 #013049;
+    margin-top: 24px; padding: 15px 40px;
+    font-family: inherit; font-size: 22px; font-weight: bold;
+    color: #042b40; background: linear-gradient(#8fe3ff, #36b6f0);
+    border: none; border-radius: 40px;
+    cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.4);
   }
-  #overlay button:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #013049; }
+  #overlay button:active { transform: translateY(2px); }
+  #overlay button:disabled { opacity: 0.5; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -56,21 +54,17 @@
   </div>
   <div id="overlay">
     <h1>SHARK CHASE 🦈</h1>
-    <p id="msg">Gerakkan jari (atau tetikus) — jerung akan ikut!
-       Makan ikan kecil untuk markah. Elak ubur-ubur beracun 🪼</p>
-    <button id="startBtn">MAIN</button>
+    <p id="msg">Gerakkan jari (atau tetikus) — jerung sebenar akan mengejar!
+       Telan ikan untuk markah. Elak ubur-ubur beracun 🪼</p>
+    <button id="startBtn">MEMUATKAN…</button>
   </div>
 
 <script>
-  // Kalau ada error JS, tunjuk pada skrin supaya senang nak debug.
+  // Papar error pada skrin supaya senang debug di telefon/iPad.
   window.addEventListener("error", (ev) => {
-    const o = document.getElementById("overlay");
-    const m = document.getElementById("msg");
-    if (o && m) {
-      o.classList.remove("hidden");
-      m.innerHTML = "⚠️ Ada error:<br><small>" +
-        String(ev.message || ev.error || "tak diketahui") + "</small>";
-    }
+    const o = document.getElementById("overlay"), m = document.getElementById("msg");
+    if (o && m) { o.classList.remove("hidden");
+      m.innerHTML = "⚠️ Error:<br><small>" + String(ev.message || ev.error) + "</small>"; }
   });
 (() => {
   "use strict";
@@ -82,16 +76,38 @@
   const msgEl   = document.getElementById("msg");
   const startBtn = document.getElementById("startBtn");
 
-  // Logical resolution (kept small for chunky pixels), scaled to screen.
+  // ----- Realistic image assets (loaded by the player's browser) -----
+  const BASE = "https://d8j0ntlcm91z4.cloudfront.net/user_35MBLo6h6uUCFDRFkC4V23IoiWp/";
+  const URLS = {
+    shark: BASE + "hf_20260617_182004_3bdd1cd8-245e-489c-b321-4240104cc5f4.png",
+    fish:  BASE + "hf_20260617_182008_849baff6-3b8f-4b0a-8181-07daf08e6170.png",
+    jelly: BASE + "hf_20260617_182025_de49bff3-0263-465b-b77b-bf8a877d9eb7.png",
+    water: BASE + "hf_20260617_181807_d066891e-f37c-4d9f-81c1-83edb1b9ce56.png",
+  };
+  const IMG = {};
+  let loaded = 0, total = Object.keys(URLS).length, ready = false;
+  for (const k in URLS) {
+    const im = new Image();
+    im.onload  = () => { if (++loaded >= total) onReady(); };
+    im.onerror = () => { if (++loaded >= total) onReady(); }; // teruskan walau ada yang gagal
+    im.src = URLS[k];
+    IMG[k] = im;
+  }
+  function onReady() {
+    ready = true;
+    startBtn.textContent = "MAIN";
+    startBtn.disabled = false;
+  }
+  // jaga-jaga: kalau imej lambat, benarkan main selepas 6 saat
+  setTimeout(() => { if (!ready) onReady(); }, 6000);
+
+  // ----- Canvas sizing -----
   let W = 0, H = 0, DPR = 1;
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
-    W = window.innerWidth;
-    H = window.innerHeight;
-    canvas.width  = Math.floor(W * DPR);
-    canvas.height = Math.floor(H * DPR);
-    canvas.style.width  = W + "px";
-    canvas.style.height = H + "px";
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.imageSmoothingEnabled = true;
   }
@@ -104,457 +120,209 @@
   function setTarget(e) {
     const t = e.touches ? e.touches[0] : e;
     if (!t) return;
-    target.x = t.clientX;
-    target.y = t.clientY;
-    pointerActive = true;
+    target.x = t.clientX; target.y = t.clientY; pointerActive = true;
   }
   canvas.addEventListener("mousemove", setTarget);
   canvas.addEventListener("touchstart", (e) => { setTarget(e); e.preventDefault(); }, { passive: false });
   canvas.addEventListener("touchmove",  (e) => { setTarget(e); e.preventDefault(); }, { passive: false });
 
-  // ----- Game state -----
+  // ----- State -----
   let best = 0;
   try { best = parseInt(localStorage.getItem("sharkBest") || "0", 10) || 0; } catch (_) {}
   bestEl.textContent = "🏆 " + best;
 
-  let running = false, score = 0, t = 0;
-  const shark = { x: W / 2, y: H / 2, dir: 1, angle: 0 };
+  let running = false, score = 0, t = 0, hintT = 0;
+  const shark = { x: W / 2, y: H / 2, heading: 0 };
   let fishes = [], jellies = [], bubbles = [], particles = [];
 
-  function rand(a, b) { return a + Math.random() * (b - a); }
+  const rand = (a, b) => a + Math.random() * (b - a);
+  function angLerp(a, b, f) { // shortest-path angle interpolation
+    let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return a + d * f;
+  }
 
   function spawnFish() {
-    const fromLeft = Math.random() < 0.5;
-    fishes.push({
-      x: fromLeft ? -20 : W + 20,
-      y: rand(40, H - 40),
-      vx: (fromLeft ? 1 : -1) * rand(0.6, 1.6),
-      vy: rand(-0.3, 0.3),
-      hue: Math.floor(rand(0, 360)),
-      size: rand(0.8, 1.3),
-      wob: rand(0, 6.28),
-    });
+    const edge = Math.floor(rand(0, 4));
+    let x, y;
+    if (edge === 0) { x = -30; y = rand(0, H); }
+    else if (edge === 1) { x = W + 30; y = rand(0, H); }
+    else if (edge === 2) { x = rand(0, W); y = -30; }
+    else { x = rand(0, W); y = H + 30; }
+    const ang = Math.atan2(H / 2 - y, W / 2 - x) + rand(-0.6, 0.6);
+    const sp = rand(0.6, 1.5);
+    fishes.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      size: rand(0.7, 1.15), wob: rand(0, 6.28), turn: rand(-0.004, 0.004) });
   }
   function spawnJelly() {
-    jellies.push({
-      x: rand(30, W - 30),
-      y: H + 30,
-      vy: -rand(0.4, 1.1),
-      drift: rand(0, 6.28),
-      pulse: rand(0, 6.28),
-    });
+    jellies.push({ x: rand(40, W - 40), y: H + 40, vy: -rand(0.4, 1.0),
+      vx: rand(-0.3, 0.3), pulse: rand(0, 6.28), size: rand(0.75, 1.15) });
   }
 
   function reset() {
     score = 0; t = 0;
-    shark.x = W / 2; shark.y = H / 2; shark.dir = 1; shark.angle = 0;
+    shark.x = W / 2; shark.y = H / 2; shark.heading = -Math.PI / 2;
     fishes = []; jellies = []; particles = [];
-    bubbles = Array.from({ length: 28 }, () => ({
-      x: rand(0, W), y: rand(0, H), r: rand(1, 3), v: rand(0.3, 1.1),
-    }));
-    for (let i = 0; i < 4; i++) spawnFish();
+    bubbles = Array.from({ length: 36 }, () => ({
+      x: rand(0, W), y: rand(0, H), r: rand(1, 3.5), v: rand(0.3, 1.2) }));
+    for (let i = 0; i < 5; i++) spawnFish();
     scoreEl.textContent = "🐟 0";
   }
 
-  let hintT = 0;
   function start() {
-    reset();
-    running = true;
-    hintT = 180; // tunjuk petunjuk "gerakkan jari" ~3 saat
+    if (!ready) return;
+    reset(); running = true; hintT = 200;
     overlay.classList.add("hidden");
     if (!pointerActive) { target.x = W / 2; target.y = H / 2; }
   }
-
   function gameOver() {
     running = false;
-    if (score > best) {
-      best = score;
+    if (score > best) { best = score;
       try { localStorage.setItem("sharkBest", String(best)); } catch (_) {}
-      bestEl.textContent = "🏆 " + best;
-    }
-    msgEl.innerHTML = "Aduh! Jerung kena ubur-ubur beracun 🪼<br><br>" +
+      bestEl.textContent = "🏆 " + best; }
+    msgEl.innerHTML = "Jerung kena sengat ubur-ubur beracun! 🪼<br><br>" +
       "Markah: <b>" + score + " ikan</b><br>Terbaik: <b>" + best + "</b>";
     overlay.querySelector("h1").textContent = "GAME OVER";
     startBtn.textContent = "MAIN LAGI";
     overlay.classList.remove("hidden");
   }
-
-  // Sokong click (PC) dan touch (HP) — sesetengah browser HP lambat hantar "click".
   startBtn.addEventListener("click", start);
   startBtn.addEventListener("touchend", (e) => { e.preventDefault(); start(); }, { passive: false });
-  // Tap di mana-mana pada skrin pun boleh mula main (kalau belum bermain).
-  canvas.addEventListener("pointerdown", () => { if (!running) start(); });
+  canvas.addEventListener("pointerdown", () => { if (!running && ready) start(); });
 
-
-  // Realistic-ish great white shark drawn with smooth curves. Faces +x (right).
-  function drawShark(x, y, dir, angle) {
-    const wag = Math.sin(t * 0.22) * 0.22;      // tail swimming motion
-    const finWag = Math.sin(t * 0.22 + 0.6) * 4;
+  // ----- Drawing helpers -----
+  function drawSprite(img, x, y, size, rot) {
+    if (!img || !img.complete || !img.naturalWidth) return false;
+    const ar = img.naturalWidth / img.naturalHeight;
+    let w = size, h = size;
+    if (ar >= 1) h = size / ar; else w = size * ar;
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.scale(dir, 1);
-    ctx.scale(0.92, 0.92);
-
-    // ---- soft shadow under the shark ----
-    ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = "#000";
-    ctx.beginPath();
-    ctx.ellipse(-6, 16, 56, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (rot) ctx.rotate(rot);
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
-
-    // ---- caudal (tail) fin, hinged at body rear so it can wag ----
-    ctx.save();
-    ctx.translate(-54, 0);
-    ctx.rotate(wag);
-    const tailGrad = ctx.createLinearGradient(0, -28, 0, 18);
-    tailGrad.addColorStop(0, "#5a6b78");
-    tailGrad.addColorStop(1, "#41525f");
-    ctx.fillStyle = tailGrad;
-    ctx.beginPath();
-    ctx.moveTo(2, -5);
-    ctx.quadraticCurveTo(-10, -22, -20, -30); // upper lobe tip
-    ctx.quadraticCurveTo(-12, -14, -6, -2);
-    ctx.quadraticCurveTo(-12, 8, -22, 16);    // lower lobe tip (smaller)
-    ctx.quadraticCurveTo(-8, 8, 2, 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // ---- pectoral fin (far side, behind body) ----
-    ctx.save();
-    ctx.fillStyle = "#3c4d59";
-    ctx.beginPath();
-    ctx.moveTo(20, 8);
-    ctx.quadraticCurveTo(8, 30 + finWag, -8, 34 + finWag);
-    ctx.quadraticCurveTo(14, 16, 30, 12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // ---- body ----
-    const bodyGrad = ctx.createLinearGradient(0, -26, 0, 24);
-    bodyGrad.addColorStop(0.0, "#465866");   // dark dorsal
-    bodyGrad.addColorStop(0.55, "#7d909d");  // mid flank
-    bodyGrad.addColorStop(0.62, "#c9d6de");  // counter-shade line
-    bodyGrad.addColorStop(1.0, "#eef3f6");   // white belly
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.moveTo(66, 2);                                   // nose tip
-    ctx.bezierCurveTo(50, -20, 14, -26, -16, -19);       // head hump -> back
-    ctx.bezierCurveTo(-34, -15, -46, -11, -56, -7);      // toward tail base (top)
-    ctx.lineTo(-56, 7);                                  // tail base (bottom)
-    ctx.bezierCurveTo(-44, 12, -30, 20, 2, 22);          // belly
-    ctx.bezierCurveTo(28, 23, 50, 18, 66, 2);            // up to mouth/nose
-    ctx.closePath();
-    ctx.fill();
-
-    // ---- dorsal fin ----
-    const dorGrad = ctx.createLinearGradient(0, -48, 0, -16);
-    dorGrad.addColorStop(0, "#3a4b58");
-    dorGrad.addColorStop(1, "#5d6f7c");
-    ctx.fillStyle = dorGrad;
-    ctx.beginPath();
-    ctx.moveTo(6, -22);
-    ctx.quadraticCurveTo(-6, -50, -20, -19);
-    ctx.quadraticCurveTo(-8, -22, 6, -22);
-    ctx.closePath();
-    ctx.fill();
-
-    // ---- near pectoral fin (in front of body) ----
-    ctx.fillStyle = "#5a6b78";
-    ctx.beginPath();
-    ctx.moveTo(24, 12);
-    ctx.quadraticCurveTo(12, 32 + finWag, 0, 30 + finWag);
-    ctx.quadraticCurveTo(18, 18, 30, 14);
-    ctx.closePath();
-    ctx.fill();
-
-    // ---- gill slits ----
-    ctx.strokeStyle = "rgba(40,55,66,0.55)";
-    ctx.lineWidth = 1.6;
-    for (let i = 0; i < 5; i++) {
-      const gx = 30 - i * 5;
-      ctx.beginPath();
-      ctx.moveTo(gx, -9);
-      ctx.quadraticCurveTo(gx - 3, 0, gx, 9);
-      ctx.stroke();
-    }
-
-    // ---- mouth ----
-    ctx.strokeStyle = "rgba(30,42,52,0.8)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(64, 6);
-    ctx.quadraticCurveTo(50, 16, 36, 15);
-    ctx.stroke();
-    // a few teeth
-    ctx.fillStyle = "#f4f8fa";
-    for (let i = 0; i < 5; i++) {
-      const tx = 58 - i * 5;
-      ctx.beginPath();
-      ctx.moveTo(tx, 12);
-      ctx.lineTo(tx - 2, 16);
-      ctx.lineTo(tx + 2, 16);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // ---- eye ----
-    ctx.fillStyle = "#0c1318";
-    ctx.beginPath();
-    ctx.arc(46, -6, 3.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.beginPath();
-    ctx.arc(47, -7, 1.1, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
+    return true;
   }
 
-  function drawFish(f) {
-    ctx.save();
-    ctx.translate(f.x, f.y);
-    const flip = f.vx < 0 ? -1 : 1;
-    ctx.scale(flip, 1);
-    ctx.scale(f.size, f.size);
-    const tWag = Math.sin(f.wob * 3) * 3;
-    const c  = `hsl(${f.hue},65%,58%)`;
-    const c2 = `hsl(${f.hue},65%,42%)`;
-    const cBelly = `hsl(${f.hue},55%,75%)`;
-
-    // tail
-    ctx.fillStyle = c2;
-    ctx.beginPath();
-    ctx.moveTo(8, 0);
-    ctx.quadraticCurveTo(15, -7 + tWag, 18, -8 + tWag);
-    ctx.quadraticCurveTo(14, 0, 18, 8 + tWag);
-    ctx.quadraticCurveTo(15, 7 + tWag, 8, 0);
-    ctx.closePath();
-    ctx.fill();
-
-    // body
-    const g = ctx.createLinearGradient(0, -8, 0, 8);
-    g.addColorStop(0, c);
-    g.addColorStop(1, cBelly);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(-11, 0);
-    ctx.quadraticCurveTo(-2, -8, 9, 0);
-    ctx.quadraticCurveTo(-2, 8, -11, 0);
-    ctx.closePath();
-    ctx.fill();
-
-    // top fin
-    ctx.fillStyle = c2;
-    ctx.beginPath();
-    ctx.moveTo(0, -5);
-    ctx.quadraticCurveTo(3, -11, 6, -4);
-    ctx.closePath();
-    ctx.fill();
-
-    // eye
-    ctx.fillStyle = "#0b1822";
-    ctx.beginPath();
-    ctx.arc(-6, -1, 1.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+  function burst(x, y) {
+    for (let i = 0; i < 12; i++)
+      particles.push({ x, y, vx: rand(-2.4, 2.4), vy: rand(-2.4, 2.4), life: 1,
+        c: `hsl(${rand(190,210)},90%,${rand(70,90)}%)` });
   }
 
-  function drawJelly(j) {
-    ctx.save();
-    ctx.translate(j.x, j.y);
-    const glow = 0.5 + 0.5 * Math.sin(j.pulse);
-    const squash = 1 + 0.12 * Math.sin(j.pulse); // pulsing dome
-
-    // glow halo
-    const halo = ctx.createRadialGradient(0, 0, 2, 0, 0, 30);
-    halo.addColorStop(0, `rgba(255,140,210,${0.28 + 0.18 * glow})`);
-    halo.addColorStop(1, "rgba(255,140,210,0)");
-    ctx.fillStyle = halo;
-    ctx.beginPath();
-    ctx.arc(0, 0, 30, 0, Math.PI * 2);
-    ctx.fill();
-
-    // tentacles
-    ctx.strokeStyle = `rgba(255,120,200,${0.5 + 0.3 * glow})`;
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    for (let i = -3; i <= 3; i++) {
-      const baseX = i * 2.6;
-      ctx.beginPath();
-      ctx.moveTo(baseX, 4);
-      ctx.quadraticCurveTo(
-        baseX + Math.sin(j.pulse + i) * 6, 16,
-        baseX + Math.sin(j.pulse * 1.3 + i) * 5, 26
-      );
-      ctx.stroke();
-    }
-
-    // bell / dome
-    const dome = ctx.createLinearGradient(0, -14, 0, 8);
-    dome.addColorStop(0, `rgba(255,200,235,${0.85})`);
-    dome.addColorStop(1, `rgba(230,90,180,${0.7 + 0.2 * glow})`);
-    ctx.fillStyle = dome;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 13 * squash, 11 / squash, 0, Math.PI, Math.PI * 2);
-    ctx.lineTo(13 * squash, 2);
-    ctx.quadraticCurveTo(0, 8, -13 * squash, 2);
-    ctx.closePath();
-    ctx.fill();
-
-    // inner highlight
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.beginPath();
-    ctx.ellipse(-3, -4, 4, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function burst(x, y, hue) {
-    for (let i = 0; i < 10; i++) {
-      particles.push({
-        x, y,
-        vx: rand(-2, 2), vy: rand(-2, 2),
-        life: 1, hue,
-      });
-    }
-  }
-
-  // ----- Main loop -----
+  // ----- Loop -----
   let last = performance.now();
   function loop(now) {
-    const dt = Math.min(2, (now - last) / 16.67);
-    last = now;
-    update(dt);
-    render();
-    requestAnimationFrame(loop);
+    const dt = Math.min(2.2, (now - last) / 16.67); last = now;
+    update(dt); render(); requestAnimationFrame(loop);
   }
 
   function update(dt) {
     t += dt;
-
-    // background bubbles always move
-    for (const b of bubbles) {
-      b.y -= b.v * dt;
-      if (b.y < -4) { b.y = H + 4; b.x = rand(0, W); }
-    }
-
+    for (const b of bubbles) { b.y -= b.v * dt; if (b.y < -5) { b.y = H + 5; b.x = rand(0, W); } }
     if (!running) return;
 
-    // Shark eases toward target (the finger).
-    const dx = target.x - shark.x;
-    const dy = target.y - shark.y;
-    shark.x += dx * 0.12 * dt;
-    shark.y += dy * 0.12 * dt;
-    const speed = Math.hypot(dx, dy);
-    if (speed > 1) {
-      const desired = Math.atan2(dy, Math.abs(dx)) * (dx < 0 ? -1 : 1);
-      shark.dir = dx < 0 ? -1 : 1;
-      shark.angle += (Math.atan2(dy, Math.abs(dx) + 0.001) * 0.6 - shark.angle) * 0.1 * dt;
-    }
+    // shark glides toward finger and turns to face travel direction
+    const dx = target.x - shark.x, dy = target.y - shark.y;
+    const dist = Math.hypot(dx, dy);
+    shark.x += dx * 0.085 * dt; shark.y += dy * 0.085 * dt;
+    if (dist > 6) shark.heading = angLerp(shark.heading, Math.atan2(dy, dx), 0.12 * dt);
 
-    // spawn
     if (Math.random() < 0.02 * dt + score * 0.0002) spawnFish();
-    if (Math.random() < (0.004 + score * 0.0004) * dt) spawnJelly();
+    if (Math.random() < (0.0045 + score * 0.0004) * dt) spawnJelly();
 
-    // fish movement + eating
-    const eatR = 42;
+    const eatR = 52;
     for (let i = fishes.length - 1; i >= 0; i--) {
       const f = fishes[i];
       f.wob += 0.1 * dt;
-      f.x += f.vx * dt;
-      f.y += f.vy * dt + Math.sin(f.wob) * 0.4;
-      if (f.x < -40 || f.x > W + 40) { fishes.splice(i, 1); continue; }
+      const a = Math.atan2(f.vy, f.vx) + f.turn * dt;
+      const sp = Math.hypot(f.vx, f.vy);
+      f.vx = Math.cos(a) * sp; f.vy = Math.sin(a) * sp;
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      if (f.x < -60 || f.x > W + 60 || f.y < -60 || f.y > H + 60) { fishes.splice(i, 1); continue; }
       if (Math.hypot(f.x - shark.x, f.y - shark.y) < eatR) {
-        burst(f.x, f.y, f.hue);
-        fishes.splice(i, 1);
-        score++;
+        burst(f.x, f.y); fishes.splice(i, 1); score++;
         scoreEl.textContent = "🐟 " + score;
       }
     }
 
-    // jellies movement + collision
-    const hitR = 30;
+    const hitR = 44;
     for (let i = jellies.length - 1; i >= 0; i--) {
       const j = jellies[i];
-      j.pulse += 0.08 * dt;
-      j.drift += 0.03 * dt;
-      j.y += j.vy * dt;
-      j.x += Math.sin(j.drift) * 0.6 * dt;
-      if (j.y < -50) { jellies.splice(i, 1); continue; }
-      if (Math.hypot(j.x - shark.x, j.y - shark.y) < hitR) {
-        burst(shark.x, shark.y, 320);
-        gameOver();
-        return;
-      }
+      j.pulse += 0.07 * dt; j.y += j.vy * dt; j.x += j.vx * dt;
+      if (j.y < -70) { jellies.splice(i, 1); continue; }
+      if (Math.hypot(j.x - shark.x, j.y - shark.y) < hitR) { burst(shark.x, shark.y); gameOver(); return; }
     }
 
-    // particles
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      p.x += p.vx * dt; p.y += p.vy * dt;
-      p.vy += 0.05 * dt;
-      p.life -= 0.03 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.05 * dt; p.life -= 0.025 * dt;
       if (p.life <= 0) particles.splice(i, 1);
     }
   }
 
   function render() {
-    // ocean gradient
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#0a4d72");
-    g.addColorStop(0.6, "#063b5c");
-    g.addColorStop(1, "#021b2e");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+    // water background (cover)
+    if (IMG.water.complete && IMG.water.naturalWidth) {
+      const iw = IMG.water.naturalWidth, ih = IMG.water.naturalHeight;
+      const s = Math.max(W / iw, H / ih);
+      const w = iw * s, h = ih * s;
+      ctx.drawImage(IMG.water, (W - w) / 2, (H - h) / 2, w, h);
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "#0a4d72"); g.addColorStop(1, "#021b2e");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
 
-    // light rays
-    ctx.globalAlpha = 0.05;
-    ctx.fillStyle = "#bfe6ff";
+    // god rays
+    ctx.globalAlpha = 0.045; ctx.fillStyle = "#cfeeff";
     for (let i = 0; i < 5; i++) {
-      const x = ((i * 173 + t * 0.3) % (W + 200)) - 100;
-      ctx.beginPath();
-      ctx.moveTo(x, 0); ctx.lineTo(x + 60, 0);
-      ctx.lineTo(x + 160, H); ctx.lineTo(x + 100, H);
-      ctx.closePath(); ctx.fill();
+      const x = ((i * 197 + t * 0.25) % (W + 240)) - 120;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 70, 0);
+      ctx.lineTo(x + 180, H); ctx.lineTo(x + 110, H); ctx.closePath(); ctx.fill();
     }
     ctx.globalAlpha = 1;
 
-    // bubbles
-    ctx.fillStyle = "rgba(180,225,255,0.35)";
-    for (const b of bubbles) {
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, 6.28);
-      ctx.fill();
+    // jellies (under shark)
+    for (const j of jellies) {
+      const pulse = 1 + 0.08 * Math.sin(j.pulse);
+      drawSprite(IMG.jelly, j.x, j.y, 78 * j.size * pulse, Math.sin(j.pulse * 0.5) * 0.15);
     }
 
-    for (const f of fishes) drawFish(f);
-    for (const j of jellies) drawJelly(j);
+    // fish
+    for (const f of fishes) {
+      const rot = Math.atan2(f.vy, f.vx) + Math.PI / 2 + Math.sin(f.wob) * 0.08;
+      drawSprite(IMG.fish, f.x, f.y, 52 * f.size, rot);
+    }
+
+    // bubbles
+    ctx.fillStyle = "rgba(200,235,255,0.4)";
+    for (const b of bubbles) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.28); ctx.fill(); }
+
+    // shark
+    if (running) {
+      const bob = Math.sin(t * 0.25) * 0.04;
+      // soft shadow
+      ctx.save(); ctx.globalAlpha = 0.22; ctx.fillStyle = "#000";
+      ctx.beginPath(); ctx.ellipse(shark.x, shark.y + 6, 60, 34, 0, 0, 6.28); ctx.fill(); ctx.restore();
+      drawSprite(IMG.shark, shark.x, shark.y, 165, shark.heading + Math.PI / 2 + bob);
+    }
 
     // particles
     for (const p of particles) {
-      ctx.globalAlpha = Math.max(0, p.life);
-      ctx.fillStyle = `hsl(${p.hue},80%,65%)`;
-      ctx.fillRect(p.x, p.y, 4, 4);
+      ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.c;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 6.28); ctx.fill();
     }
     ctx.globalAlpha = 1;
 
-    if (running) drawShark(shark.x, shark.y, shark.dir, shark.angle);
-
-    // Petunjuk selepas mula main.
+    // hint
     if (running && hintT > 0) {
       hintT--;
-      ctx.globalAlpha = Math.min(1, hintT / 60);
-      ctx.fillStyle = "#cdeafd";
-      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.globalAlpha = Math.min(1, hintT / 70);
+      ctx.fillStyle = "#eaf6ff"; ctx.font = "bold 22px 'Trebuchet MS', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("👆 Gerakkan jari kau!", W / 2, H * 0.18);
-      ctx.globalAlpha = 1;
-      ctx.textAlign = "start";
+      ctx.fillText("👆 Gerakkan jari kau!", W / 2, H * 0.16);
+      ctx.globalAlpha = 1; ctx.textAlign = "start";
     }
   }
 
