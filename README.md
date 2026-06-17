@@ -1,6 +1,6 @@
 # Shark-Chase 🦈
 
-Game pixel ringkas — **jerung ikut jari kau!**
+Game laut ringkas — **jerung ikut jari kau!** (grafik realistik, lukisan vektor licin)
 
 Gerakkan jari (telefon) atau tetikus (komputer), dan jerung pixel akan
 mengejar gerakan kau. Makan ikan kecil untuk kumpul markah, tapi elak
