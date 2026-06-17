@@ -16,11 +16,19 @@
   #game { display: block; width: 100vw; height: 100vh; cursor: none; }
   #hud {
     position: fixed; top: 12px; left: 0; right: 0;
-    display: flex; justify-content: space-between;
+    display: flex; justify-content: space-between; align-items: center;
     padding: 0 18px;
     color: #eaf6ff; font-size: 20px; font-weight: bold;
     text-shadow: 0 2px 6px rgba(0,0,0,0.7);
     pointer-events: none;
+  }
+  #level { font-size: 16px; opacity: 0.95; }
+  #mute {
+    position: fixed; right: 14px; bottom: 14px;
+    width: 50px; height: 50px; border-radius: 50%;
+    border: none; font-size: 22px;
+    background: rgba(8,40,60,0.6); color: #eaf6ff;
+    cursor: pointer; backdrop-filter: blur(2px);
   }
   #overlay {
     position: fixed; inset: 0;
@@ -33,7 +41,7 @@
     padding: 24px;
   }
   #overlay h1 { font-size: 44px; margin-bottom: 10px; letter-spacing: 1px; }
-  #overlay p { font-size: 17px; margin: 6px 0; max-width: 340px; line-height: 1.55; }
+  #overlay p { font-size: 16px; margin: 6px 0; max-width: 360px; line-height: 1.55; }
   #overlay button {
     margin-top: 24px; padding: 15px 40px;
     font-family: inherit; font-size: 22px; font-weight: bold;
@@ -50,17 +58,18 @@
   <canvas id="game"></canvas>
   <div id="hud">
     <span id="score">🐟 0</span>
+    <span id="level">LV 1</span>
     <span id="best">🏆 0</span>
   </div>
+  <button id="mute" aria-label="bunyi">🔊</button>
   <div id="overlay">
     <h1>SHARK CHASE 🦈</h1>
     <p id="msg">Gerakkan jari (atau tetikus) — jerung sebenar akan mengejar!
-       Telan ikan untuk markah. Elak ubur-ubur beracun 🪼</p>
+       Telan ikan untuk markah, kutip power-up ⚡🛡🧲, dan elak ubur-ubur beracun 🪼</p>
     <button id="startBtn">MEMUATKAN…</button>
   </div>
 
 <script>
-  // Papar error pada skrin supaya senang debug di telefon/iPad.
   window.addEventListener("error", (ev) => {
     const o = document.getElementById("overlay"), m = document.getElementById("msg");
     if (o && m) { o.classList.remove("hidden");
@@ -71,10 +80,12 @@
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
   const scoreEl = document.getElementById("score");
+  const levelEl = document.getElementById("level");
   const bestEl  = document.getElementById("best");
   const overlay = document.getElementById("overlay");
   const msgEl   = document.getElementById("msg");
   const startBtn = document.getElementById("startBtn");
+  const muteBtn = document.getElementById("mute");
 
   // ----- Realistic image assets (loaded by the player's browser) -----
   const BASE = "https://d8j0ntlcm91z4.cloudfront.net/user_35MBLo6h6uUCFDRFkC4V23IoiWp/";
@@ -89,17 +100,63 @@
   for (const k in URLS) {
     const im = new Image();
     im.onload  = () => { if (++loaded >= total) onReady(); };
-    im.onerror = () => { if (++loaded >= total) onReady(); }; // teruskan walau ada yang gagal
+    im.onerror = () => { if (++loaded >= total) onReady(); };
     im.src = URLS[k];
     IMG[k] = im;
   }
-  function onReady() {
-    ready = true;
-    startBtn.textContent = "MAIN";
-    startBtn.disabled = false;
-  }
-  // jaga-jaga: kalau imej lambat, benarkan main selepas 6 saat
+  function onReady() { ready = true; startBtn.textContent = "MAIN"; startBtn.disabled = false; }
   setTimeout(() => { if (!ready) onReady(); }, 6000);
+
+  // ----- Audio (synthesized, no downloads) -----
+  let actx = null, muted = false, musicGain = null, musicTimer = null;
+  try { muted = localStorage.getItem("sharkMute") === "1"; } catch (_) {}
+  muteBtn.textContent = muted ? "🔇" : "🔊";
+  function initAudio() {
+    if (!actx) {
+      try {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        musicGain = actx.createGain();
+        musicGain.gain.value = muted ? 0 : 0.09;
+        musicGain.connect(actx.destination);
+        // low drone
+        const drone = actx.createOscillator(), dg = actx.createGain();
+        drone.type = "sine"; drone.frequency.value = 65.4; dg.gain.value = 0.05;
+        drone.connect(dg).connect(musicGain); drone.start();
+        // calm pentatonic bells
+        const scale = [329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+        musicTimer = setInterval(() => {
+          if (!actx) return;
+          const f = scale[Math.floor(Math.random() * scale.length)];
+          const o = actx.createOscillator(), g = actx.createGain();
+          o.type = "triangle"; o.frequency.value = f;
+          g.gain.setValueAtTime(0.0001, actx.currentTime);
+          g.gain.linearRampToValueAtTime(0.05, actx.currentTime + 0.05);
+          g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + 1.4);
+          o.connect(g).connect(musicGain); o.start(); o.stop(actx.currentTime + 1.5);
+        }, 950);
+      } catch (_) {}
+    }
+    if (actx && actx.state === "suspended") actx.resume();
+  }
+  function blip(freq, dur, type, vol, slideTo) {
+    if (!actx || muted) return;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, actx.currentTime + dur);
+    g.gain.setValueAtTime(vol || 0.2, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+  }
+  const sfxEat   = (m) => blip(480 + m * 55, 0.12, "square", 0.16, 900 + m * 70);
+  const sfxPower = () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => blip(f, 0.14, "triangle", 0.15), i * 55));
+  const sfxHurt  = () => { blip(200, 0.5, "sawtooth", 0.25, 55); };
+  function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) {} }
+  function toggleMute() {
+    muted = !muted; muteBtn.textContent = muted ? "🔇" : "🔊";
+    if (musicGain) musicGain.gain.value = muted ? 0 : 0.09;
+    try { localStorage.setItem("sharkMute", muted ? "1" : "0"); } catch (_) {}
+  }
+  muteBtn.addEventListener("click", (e) => { e.stopPropagation(); initAudio(); toggleMute(); });
 
   // ----- Canvas sizing -----
   let W = 0, H = 0, DPR = 1;
@@ -114,7 +171,7 @@
   window.addEventListener("resize", resize);
   resize();
 
-  // ----- Input: shark follows finger / mouse -----
+  // ----- Input -----
   const target = { x: W / 2, y: H / 2 };
   let pointerActive = false;
   function setTarget(e) {
@@ -131,17 +188,22 @@
   try { best = parseInt(localStorage.getItem("sharkBest") || "0", 10) || 0; } catch (_) {}
   bestEl.textContent = "🏆 " + best;
 
-  let running = false, score = 0, t = 0, hintT = 0;
+  let running = false, score = 0, t = 0, hintT = 0, level = 1;
+  let combo = 0, comboTimer = 0, frenzy = false;
+  let boostT = 0, shieldT = 0, magnetT = 0;
+  let shakeT = 0, shakeMag = 0, redFlash = 0;
   const shark = { x: W / 2, y: H / 2, heading: 0 };
-  let fishes = [], jellies = [], bubbles = [], particles = [];
+  let fishes = [], jellies = [], bubbles = [], particles = [], floaters = [], powerups = [];
 
   const rand = (a, b) => a + Math.random() * (b - a);
-  function angLerp(a, b, f) { // shortest-path angle interpolation
+  function angLerp(a, b, f) {
     let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
     if (d < -Math.PI) d += Math.PI * 2;
     return a + d * f;
   }
+  const speedScale = () => 1 + (level - 1) * 0.07;
 
+  // fish kinds: small / fast / big
   function spawnFish() {
     const edge = Math.floor(rand(0, 4));
     let x, y;
@@ -149,65 +211,98 @@
     else if (edge === 1) { x = W + 30; y = rand(0, H); }
     else if (edge === 2) { x = rand(0, W); y = -30; }
     else { x = rand(0, W); y = H + 30; }
+    const r = Math.random();
+    let kind, size, pts, spd;
+    if (r < 0.15)      { kind = "big";  size = 1.5;  pts = 3; spd = rand(0.4, 0.7); }
+    else if (r < 0.40) { kind = "fast"; size = 0.65; pts = 2; spd = rand(1.6, 2.2); }
+    else               { kind = "small";size = 0.9;  pts = 1; spd = rand(0.7, 1.2); }
+    spd *= speedScale();
     const ang = Math.atan2(H / 2 - y, W / 2 - x) + rand(-0.6, 0.6);
-    const sp = rand(0.6, 1.5);
-    fishes.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
-      size: rand(0.7, 1.15), wob: rand(0, 6.28), turn: rand(-0.004, 0.004) });
+    fishes.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+      size, pts, kind, wob: rand(0, 6.28), turn: rand(-0.004, 0.004) });
   }
   function spawnJelly() {
-    jellies.push({ x: rand(40, W - 40), y: H + 40, vy: -rand(0.4, 1.0),
+    jellies.push({ x: rand(40, W - 40), y: H + 40, vy: -rand(0.4, 1.0) * speedScale(),
       vx: rand(-0.3, 0.3), pulse: rand(0, 6.28), size: rand(0.75, 1.15) });
   }
+  const POWERS = ["boost", "shield", "magnet"];
+  const POWER_ICON = { boost: "⚡", shield: "🛡️", magnet: "🧲" };
+  function spawnPower() {
+    powerups.push({ x: rand(60, W - 60), y: rand(80, H - 60),
+      type: POWERS[Math.floor(Math.random() * POWERS.length)], life: 600, bob: rand(0, 6.28) });
+  }
+
+  function addFloater(x, y, text, color) { floaters.push({ x, y, text, color: color || "#eaf6ff", life: 1 }); }
+  function shake(mag) { shakeMag = Math.max(shakeMag, mag); shakeT = Math.max(shakeT, 18); }
 
   function reset() {
-    score = 0; t = 0;
+    score = 0; t = 0; level = 1; combo = 0; comboTimer = 0; frenzy = false;
+    boostT = shieldT = magnetT = 0; shakeT = 0; redFlash = 0;
     shark.x = W / 2; shark.y = H / 2; shark.heading = -Math.PI / 2;
-    fishes = []; jellies = []; particles = [];
+    fishes = []; jellies = []; particles = []; floaters = []; powerups = [];
     bubbles = Array.from({ length: 36 }, () => ({
       x: rand(0, W), y: rand(0, H), r: rand(1, 3.5), v: rand(0.3, 1.2) }));
     for (let i = 0; i < 5; i++) spawnFish();
-    scoreEl.textContent = "🐟 0";
+    scoreEl.textContent = "🐟 0"; levelEl.textContent = "LV 1";
   }
 
   function start() {
     if (!ready) return;
+    initAudio();
     reset(); running = true; hintT = 200;
     overlay.classList.add("hidden");
     if (!pointerActive) { target.x = W / 2; target.y = H / 2; }
   }
   function gameOver() {
     running = false;
+    sfxHurt(); vibrate([60, 40, 120]); shake(26); redFlash = 1;
     if (score > best) { best = score;
       try { localStorage.setItem("sharkBest", String(best)); } catch (_) {}
       bestEl.textContent = "🏆 " + best; }
     msgEl.innerHTML = "Jerung kena sengat ubur-ubur beracun! 🪼<br><br>" +
-      "Markah: <b>" + score + " ikan</b><br>Terbaik: <b>" + best + "</b>";
+      "Markah: <b>" + score + " ikan</b> &nbsp;•&nbsp; Level <b>" + level + "</b><br>Terbaik: <b>" + best + "</b>";
     overlay.querySelector("h1").textContent = "GAME OVER";
     startBtn.textContent = "MAIN LAGI";
-    overlay.classList.remove("hidden");
+    setTimeout(() => overlay.classList.remove("hidden"), 450);
   }
   startBtn.addEventListener("click", start);
   startBtn.addEventListener("touchend", (e) => { e.preventDefault(); start(); }, { passive: false });
   canvas.addEventListener("pointerdown", () => { if (!running && ready) start(); });
 
   // ----- Drawing helpers -----
-  function drawSprite(img, x, y, size, rot) {
-    if (!img || !img.complete || !img.naturalWidth) return false;
+  function drawSprite(img, x, y, size, rot, alpha) {
+    if (!img || !img.complete || !img.naturalWidth) return;
     const ar = img.naturalWidth / img.naturalHeight;
     let w = size, h = size;
     if (ar >= 1) h = size / ar; else w = size * ar;
     ctx.save();
+    if (alpha != null) ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
-    return true;
+  }
+  function burst(x, y, hue) {
+    for (let i = 0; i < 12; i++)
+      particles.push({ x, y, vx: rand(-2.6, 2.6), vy: rand(-2.6, 2.6), life: 1,
+        c: `hsl(${hue + rand(-15, 15)},90%,${rand(65, 88)}%)` });
   }
 
-  function burst(x, y) {
-    for (let i = 0; i < 12; i++)
-      particles.push({ x, y, vx: rand(-2.4, 2.4), vy: rand(-2.4, 2.4), life: 1,
-        c: `hsl(${rand(190,210)},90%,${rand(70,90)}%)` });
+  function eatFish(f, i) {
+    combo++; comboTimer = 95;
+    const mult = Math.min(6, 1 + Math.floor(combo / 3));
+    let gain = f.pts * mult;
+    if (frenzy) gain *= 2;
+    score += gain;
+    scoreEl.textContent = "🐟 " + score;
+    const newLevel = 1 + Math.floor(score / 14);
+    if (newLevel > level) { level = newLevel; levelEl.textContent = "LV " + level;
+      addFloater(shark.x, shark.y - 40, "LEVEL " + level + "!", "#ffe07a"); }
+    burst(f.x, f.y, f.kind === "big" ? 18 : 195);
+    addFloater(f.x, f.y, "+" + gain + (mult > 1 ? " x" + mult : ""), f.kind === "big" ? "#ffd24a" : "#aef0ff");
+    sfxEat(mult); vibrate(15);
+    if (f.kind === "big") shake(8);
+    fishes.splice(i, 1);
   }
 
   // ----- Loop -----
@@ -220,53 +315,92 @@
   function update(dt) {
     t += dt;
     for (const b of bubbles) { b.y -= b.v * dt; if (b.y < -5) { b.y = H + 5; b.x = rand(0, W); } }
+    if (redFlash > 0) redFlash -= 0.02 * dt;
+    if (shakeT > 0) { shakeT -= dt; if (shakeT <= 0) shakeMag = 0; }
+
     if (!running) return;
 
-    // shark glides toward finger and turns to face travel direction
+    // timers
+    if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
+    frenzy = combo >= 10;
+    if (boostT > 0) boostT -= dt;
+    if (shieldT > 0) shieldT -= dt;
+    if (magnetT > 0) magnetT -= dt;
+
+    // shark follow + facing
+    const follow = (boostT > 0 ? 0.17 : 0.09);
     const dx = target.x - shark.x, dy = target.y - shark.y;
     const dist = Math.hypot(dx, dy);
-    shark.x += dx * 0.085 * dt; shark.y += dy * 0.085 * dt;
+    shark.x += dx * follow * dt; shark.y += dy * follow * dt;
     if (dist > 6) shark.heading = angLerp(shark.heading, Math.atan2(dy, dx), 0.12 * dt);
 
-    if (Math.random() < 0.02 * dt + score * 0.0002) spawnFish();
-    if (Math.random() < (0.0045 + score * 0.0004) * dt) spawnJelly();
+    // spawns (scale with level)
+    if (Math.random() < (0.02 + level * 0.002) * dt) spawnFish();
+    if (Math.random() < (0.0045 + level * 0.0006) * dt) spawnJelly();
+    if (Math.random() < 0.0016 * dt && powerups.length < 2) spawnPower();
 
-    const eatR = 52;
+    // fish
     for (let i = fishes.length - 1; i >= 0; i--) {
       const f = fishes[i];
       f.wob += 0.1 * dt;
-      const a = Math.atan2(f.vy, f.vx) + f.turn * dt;
+      let a = Math.atan2(f.vy, f.vx) + f.turn * dt;
       const sp = Math.hypot(f.vx, f.vy);
+      // magnet pulls fish toward shark
+      if (magnetT > 0) {
+        const mdx = shark.x - f.x, mdy = shark.y - f.y, md = Math.hypot(mdx, mdy);
+        if (md < 320) a = angLerp(a, Math.atan2(mdy, mdx), 0.2 * dt);
+      }
       f.vx = Math.cos(a) * sp; f.vy = Math.sin(a) * sp;
       f.x += f.vx * dt; f.y += f.vy * dt;
-      if (f.x < -60 || f.x > W + 60 || f.y < -60 || f.y > H + 60) { fishes.splice(i, 1); continue; }
-      if (Math.hypot(f.x - shark.x, f.y - shark.y) < eatR) {
-        burst(f.x, f.y); fishes.splice(i, 1); score++;
-        scoreEl.textContent = "🐟 " + score;
+      if (f.x < -70 || f.x > W + 70 || f.y < -70 || f.y > H + 70) { fishes.splice(i, 1); continue; }
+      if (Math.hypot(f.x - shark.x, f.y - shark.y) < 44 + f.size * 22) eatFish(f, i);
+    }
+
+    // power-ups pickup
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      const p = powerups[i]; p.life -= dt; p.bob += 0.08 * dt;
+      if (p.life <= 0) { powerups.splice(i, 1); continue; }
+      if (Math.hypot(p.x - shark.x, p.y - shark.y) < 60) {
+        if (p.type === "boost") boostT = 360;
+        else if (p.type === "shield") shieldT = 420;
+        else magnetT = 420;
+        addFloater(p.x, p.y - 20, POWER_ICON[p.type] + " " + p.type.toUpperCase(), "#ffe07a");
+        sfxPower(); vibrate([20, 30, 20]); burst(p.x, p.y, 50);
+        powerups.splice(i, 1);
       }
     }
 
-    const hitR = 44;
+    // jellies
     for (let i = jellies.length - 1; i >= 0; i--) {
       const j = jellies[i];
       j.pulse += 0.07 * dt; j.y += j.vy * dt; j.x += j.vx * dt;
       if (j.y < -70) { jellies.splice(i, 1); continue; }
-      if (Math.hypot(j.x - shark.x, j.y - shark.y) < hitR) { burst(shark.x, shark.y); gameOver(); return; }
+      if (Math.hypot(j.x - shark.x, j.y - shark.y) < 44) {
+        if (shieldT > 0) { burst(j.x, j.y, 200); jellies.splice(i, 1); shake(6); sfxPower(); }
+        else { gameOver(); return; }
+      }
     }
 
+    // particles & floaters
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.05 * dt; p.life -= 0.025 * dt;
       if (p.life <= 0) particles.splice(i, 1);
     }
+    for (let i = floaters.length - 1; i >= 0; i--) {
+      const fl = floaters[i]; fl.y -= 0.8 * dt; fl.life -= 0.018 * dt;
+      if (fl.life <= 0) floaters.splice(i, 1);
+    }
   }
 
   function render() {
-    // water background (cover)
+    ctx.save();
+    if (shakeMag > 0) ctx.translate(rand(-shakeMag, shakeMag), rand(-shakeMag, shakeMag));
+
+    // water
     if (IMG.water.complete && IMG.water.naturalWidth) {
       const iw = IMG.water.naturalWidth, ih = IMG.water.naturalHeight;
-      const s = Math.max(W / iw, H / ih);
-      const w = iw * s, h = ih * s;
+      const s = Math.max(W / iw, H / ih), w = iw * s, h = ih * s;
       ctx.drawImage(IMG.water, (W - w) / 2, (H - h) / 2, w, h);
     } else {
       const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -283,7 +417,21 @@
     }
     ctx.globalAlpha = 1;
 
-    // jellies (under shark)
+    // power-ups
+    for (const p of powerups) {
+      const fade = p.life < 90 ? (Math.sin(t * 0.6) > 0 ? 0.4 : 1) : 1;
+      const yy = p.y + Math.sin(p.bob) * 5;
+      ctx.save(); ctx.globalAlpha = fade;
+      const grd = ctx.createRadialGradient(p.x, yy, 4, p.x, yy, 30);
+      grd.addColorStop(0, "rgba(255,240,150,0.9)"); grd.addColorStop(1, "rgba(255,240,150,0)");
+      ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(p.x, yy, 30, 0, 6.28); ctx.fill();
+      ctx.font = "30px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(POWER_ICON[p.type], p.x, yy + 1);
+      ctx.restore();
+    }
+    ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+
+    // jellies
     for (const j of jellies) {
       const pulse = 1 + 0.08 * Math.sin(j.pulse);
       drawSprite(IMG.jelly, j.x, j.y, 78 * j.size * pulse, Math.sin(j.pulse * 0.5) * 0.15);
@@ -299,12 +447,26 @@
     ctx.fillStyle = "rgba(200,235,255,0.4)";
     for (const b of bubbles) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.28); ctx.fill(); }
 
-    // shark
+    // shark + aura
     if (running) {
       const bob = Math.sin(t * 0.25) * 0.04;
-      // soft shadow
       ctx.save(); ctx.globalAlpha = 0.22; ctx.fillStyle = "#000";
       ctx.beginPath(); ctx.ellipse(shark.x, shark.y + 6, 60, 34, 0, 0, 6.28); ctx.fill(); ctx.restore();
+      if (shieldT > 0) {
+        ctx.save(); ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 0.4);
+        ctx.strokeStyle = "#7fe0ff"; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(shark.x, shark.y, 78, 0, 6.28); ctx.stroke(); ctx.restore();
+      }
+      if (boostT > 0) {
+        ctx.save(); ctx.globalAlpha = 0.5;
+        const back = shark.heading + Math.PI;
+        for (let k = 1; k <= 3; k++) {
+          ctx.globalAlpha = 0.18 / k;
+          drawSprite(IMG.shark, shark.x + Math.cos(back) * 22 * k, shark.y + Math.sin(back) * 22 * k,
+            165, shark.heading + Math.PI / 2 + bob);
+        }
+        ctx.restore();
+      }
       drawSprite(IMG.shark, shark.x, shark.y, 165, shark.heading + Math.PI / 2 + bob);
     }
 
@@ -314,6 +476,38 @@
       ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 6.28); ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    // floating score text
+    ctx.textAlign = "center"; ctx.font = "bold 20px 'Trebuchet MS', sans-serif";
+    for (const fl of floaters) {
+      ctx.globalAlpha = Math.max(0, fl.life);
+      ctx.fillStyle = fl.color;
+      ctx.fillText(fl.text, fl.x, fl.y);
+    }
+    ctx.globalAlpha = 1; ctx.textAlign = "start";
+
+    ctx.restore(); // end shake
+
+    // frenzy glow border
+    if (frenzy && running) {
+      const a = 0.25 + 0.15 * Math.sin(t * 0.5);
+      const grd = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.7);
+      grd.addColorStop(0, "rgba(255,120,40,0)"); grd.addColorStop(1, `rgba(255,90,30,${a})`);
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "rgba(255,210,120," + (0.6 + 0.3 * Math.sin(t * 0.5)) + ")";
+      ctx.font = "bold 24px 'Trebuchet MS', sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("🔥 FRENZY x2 🔥", W / 2, H - 28); ctx.textAlign = "start";
+    }
+
+    // red flash on hurt
+    if (redFlash > 0) { ctx.fillStyle = `rgba(180,0,0,${redFlash * 0.5})`; ctx.fillRect(0, 0, W, H); }
+
+    // combo meter
+    if (running && combo >= 2) {
+      ctx.fillStyle = "#ffe07a"; ctx.font = "bold 18px 'Trebuchet MS', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("COMBO " + combo, W / 2, 64); ctx.textAlign = "start";
+    }
 
     // hint
     if (running && hintT > 0) {
