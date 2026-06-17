@@ -64,6 +64,16 @@
   </div>
 
 <script>
+  // Kalau ada error JS, tunjuk pada skrin supaya senang nak debug.
+  window.addEventListener("error", (ev) => {
+    const o = document.getElementById("overlay");
+    const m = document.getElementById("msg");
+    if (o && m) {
+      o.classList.remove("hidden");
+      m.innerHTML = "⚠️ Ada error:<br><small>" +
+        String(ev.message || ev.error || "tak diketahui") + "</small>";
+    }
+  });
 (() => {
   "use strict";
   const canvas = document.getElementById("game");
@@ -148,9 +158,11 @@
     scoreEl.textContent = "🐟 0";
   }
 
+  let hintT = 0;
   function start() {
     reset();
     running = true;
+    hintT = 180; // tunjuk petunjuk "gerakkan jari" ~3 saat
     overlay.classList.add("hidden");
     if (!pointerActive) { target.x = W / 2; target.y = H / 2; }
   }
@@ -169,7 +181,11 @@
     overlay.classList.remove("hidden");
   }
 
+  // Sokong click (PC) dan touch (HP) — sesetengah browser HP lambat hantar "click".
   startBtn.addEventListener("click", start);
+  startBtn.addEventListener("touchend", (e) => { e.preventDefault(); start(); }, { passive: false });
+  // Tap di mana-mana pada skrin pun boleh mula main (kalau belum bermain).
+  canvas.addEventListener("pointerdown", () => { if (!running) start(); });
 
   // ----- Pixel drawing helpers -----
   function px(x, y, s, color) {
@@ -380,6 +396,18 @@
     ctx.globalAlpha = 1;
 
     if (running) drawShark(shark.x, shark.y, shark.dir, shark.angle);
+
+    // Petunjuk selepas mula main.
+    if (running && hintT > 0) {
+      hintT--;
+      ctx.globalAlpha = Math.min(1, hintT / 60);
+      ctx.fillStyle = "#cdeafd";
+      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("👆 Gerakkan jari kau!", W / 2, H * 0.18);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = "start";
+    }
   }
 
   requestAnimationFrame(loop);
